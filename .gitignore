@@ -1,0 +1,28 @@
+# Binaries
+/gofilesync
+/gofilesync.exe
+
+# Output of build tools
+/dist/
+/bin/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# IDE/editor files
+.vscode/
+.idea/
+*.swp
+
+# Dependency directories (optional)
+/vendor/
+
+# Go test cache
+*.test
+
+# Logs
+*.log
+
+# Config (if you want to keep it local only)
+.gofilesync.json

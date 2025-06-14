@@ -1,0 +1,65 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+      - name: Get dependencies
+        run: go mod tidy
+      - name: Set version
+        id: vars
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "::set-output name=version::${GITHUB_REF#refs/tags/}"
+          else
+            echo "::set-output name=version::dev"
+          fi
+        shell: bash
+      - name: Build
+        run: |
+          VERSION=${{ steps.vars.outputs.version }}
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            go build -ldflags="-X 'main.version=$VERSION'" -o gofilesync.exe .
+          else
+            go build -ldflags="-X 'main.version=$VERSION'" -o gofilesync .
+          fi
+        shell: bash
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gofilesync-${{ runner.os }}-${{ steps.vars.outputs.version }}
+          path: |
+            gofilesync*
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ./artifacts/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
