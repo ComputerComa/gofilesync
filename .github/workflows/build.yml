@@ -3,17 +3,15 @@ name: Build & Release
 on:
   push:
     branches: [ main, master ]
-    tags: [ 'v*' ]
-  pull_request:
-    branches: [ main, master ]
+    paths:
+      - '**.go'
+      - go.mod
+      - go.sum
+      - .github/workflows/build.yml
 
 jobs:
-  build:
-    name: Build on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+  build-and-release:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Set up Go
@@ -22,44 +20,66 @@ jobs:
           go-version: '1.21'
       - name: Get dependencies
         run: go mod tidy
+      - name: Generate dev UUID
+        id: uuid
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "uuid=none" >> $GITHUB_OUTPUT
+          else
+            uuid=$(cat /proc/sys/kernel/random/uuid | cut -c1-6)
+            echo "uuid=$uuid" >> $GITHUB_OUTPUT
+          fi
       - name: Set version
         id: vars
         run: |
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            echo "::set-output name=version::${GITHUB_REF#refs/tags/}"
+            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+            echo "is_dev=false" >> $GITHUB_OUTPUT
           else
-            echo "::set-output name=version::dev"
+            echo "version=dev-${{ steps.uuid.outputs.uuid }}" >> $GITHUB_OUTPUT
+            echo "is_dev=true" >> $GITHUB_OUTPUT
           fi
-        shell: bash
-      - name: Build
+      - name: Build Linux
         run: |
           VERSION=${{ steps.vars.outputs.version }}
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            go build -ldflags="-X 'main.version=$VERSION'" -o gofilesync.exe .
-          else
-            go build -ldflags="-X 'main.version=$VERSION'" -o gofilesync .
-          fi
-        shell: bash
+          GOOS=linux GOARCH=amd64 go build -ldflags="-X 'main.version=$VERSION'" -o gofilesync-linux-amd64 .
+      - name: Build Windows
+        run: |
+          VERSION=${{ steps.vars.outputs.version }}
+          GOOS=windows GOARCH=amd64 go build -ldflags="-X 'main.version=$VERSION'" -o gofilesync-windows-amd64.exe .
+      - name: Build macOS
+        run: |
+          VERSION=${{ steps.vars.outputs.version }}
+          GOOS=darwin GOARCH=amd64 go build -ldflags="-X 'main.version=$VERSION'" -o gofilesync-darwin-amd64 .
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: gofilesync-${{ runner.os }}-${{ steps.vars.outputs.version }}
+          name: gofilesync-${{ steps.vars.outputs.version }}
           path: |
-            gofilesync*
-
-  release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Download Artifacts
-        uses: actions/download-artifact@v4
+            gofilesync-*
+      - name: Delete previous dev releases
+        if: steps.vars.outputs.is_dev == 'true'
+        uses: dev-drprasad/delete-older-releases@v0.3.3
         with:
-          path: ./artifacts
-      - name: Create Release
+          keep_latest: 0
+          delete_tag_pattern: dev-
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create dev Release
+        if: steps.vars.outputs.is_dev == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          files: ./artifacts/**/*
+          tag_name: ${{ steps.vars.outputs.version }}
+          name: Dev Build ${{ steps.vars.outputs.version }}
+          files: |
+            gofilesync-*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create tagged Release
+        if: steps.vars.outputs.is_dev != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            gofilesync-*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

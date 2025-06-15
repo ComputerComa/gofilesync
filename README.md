@@ -54,5 +54,17 @@ gofilesync service uninstall
 
 The service will use your `.gofilesync.json` config file.
 
+## Service Config Location
+
+When you install GoFileSync as a service, the config file is copied to a system-wide location:
+
+- **Windows:** `%ProgramData%\gofilesync\gofilesync.json`
+- **Linux:** `/etc/gofilesync/gofilesync.json`
+- **macOS:** `/usr/local/etc/gofilesync/gofilesync.json`
+
+The service always reads its config from this location. The CLI (`sync`, `setup`) uses `.gofilesync.json` in the current directory by default.
+
+If you need to update the service config, edit the system config file or re-run `gofilesync service install` after updating your local config.
+
 ## License
 MIT

@@ -26,3 +26,4 @@ Thumbs.db
 
 # Config (if you want to keep it local only)
 .gofilesync.json
+config.json
